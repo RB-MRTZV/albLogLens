@@ -1,0 +1,6 @@
+{
+  "queryStringParameters": {
+    "query_name": "status_code",
+    "date_range": "current"
+  }
+}

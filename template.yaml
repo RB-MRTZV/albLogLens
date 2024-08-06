@@ -1,0 +1,142 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Athena query to generate ALB report
+Globals:
+  Function:
+    Timeout: 180
+  Api:
+    Cors:
+      AllowMethods: "'GET,OPTIONS'"
+      AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+      AllowOrigin: "*"
+Resources:
+  AthenaQueryResultS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: YourUniqueBucketName #Replace the bucket name with a unique bucket name
+      AccessControl: Private
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+  albResultsAPI:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Auth:
+        ApiKeyRequired: false
+      EndpointConfiguration: 
+        Type: REGIONAL
+      Cors:
+        AllowMethods: "'GET, ,OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+        MaxAge: "'600'"
+  albReports:
+    DependsOn: AthenaQueryResultS3Bucket
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: albReports
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      CodeUri: alb_reports/
+      Events:
+        DailySchedule:
+          Type: Schedule #Change this section based on required time zone
+          Properties:
+            Schedule: cron(0 */8 * * ? *)
+            Name: DailyALBReportSydneyTime
+            Description: "Runs ALB report generation every day at 00:01 Sydney time"
+      Environment:
+        Variables:
+          OUTPUT_BUCKET: !Ref AthenaQueryResultS3Bucket
+          Athena_DB_Name: "alb_db" #Replace this value based on your requirement
+          Athena_Table_Name: "alb_logs_partitioned" #Replace this value based on your requirement
+          Query_Period_In_Days: 7  #Replace this value based on your requirement
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref QueryResultsTable
+        - AWSLambdaBasicExecutionRole
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - athena:*
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - s3:GetBucketLocation
+                - s3:GetObject
+                - s3:ListBucket
+                - s3:PutObject
+              Resource: 
+                - !GetAtt 'AthenaQueryResultS3Bucket.Arn'
+                - !Sub "${AthenaQueryResultS3Bucket.Arn}/*"
+                - "arn:aws:s3:::mailplus.alb.logs" #Replace  With Your ALB logs destination
+                - "arn:aws:s3:::mailplus.alb.logs/*"  #Replace With Your ALB logs destination
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - glue:GetTable
+                - glue:GetPartitions
+                - glue:GetDatabases
+              Resource: '*'
+  QueryResultsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: QueryResults
+      AttributeDefinitions:
+        - AttributeName: query_name
+          AttributeType: S
+        - AttributeName: date
+          AttributeType: S
+      KeySchema:
+        - AttributeName: query_name
+          KeyType: HASH
+        - AttributeName: date
+          KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+  RetrieveQueryResults:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: RetrieveQueryResults
+      Handler: retrieve.lambda_handler
+      Runtime: python3.12
+      CodeUri: retrieve_results/
+      Events:
+        GetEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref albResultsAPI
+            Path: /retrieve
+            Method: get
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref QueryResultsTable
+Outputs:
+  AthenaQueryResultS3Bucket:
+    Description: "Name of the S3 bucket for Athena query results"
+    Value: !Ref AthenaQueryResultS3Bucket
+  AthenaQueryResultS3BucketArn:
+    Description: "ARN of the S3 bucket for Athena query results"
+    Value: !GetAtt AthenaQueryResultS3Bucket.Arn 
+  albReportsLambda:
+    Description: Lambda Function ARN
+    Value: !GetAtt albReports.Arn
+  QueryResultsTableName:
+    Description: "Name of the DynamoDB table for query results"
+    Value: !Ref QueryResultsTable
+  RetrieveQueryResultsLambda:
+    Description: "Retrieve Query Results Lambda Function ARN"
+    Value: !GetAtt RetrieveQueryResults.Arn
+  albResultsAPIEndpoint:
+    Description: "API Gateway endpoint URL for Prod stage"
+    Value: !Sub "https://${albResultsAPI}.execute-api.${AWS::Region}.amazonaws.com/Prod/"

@@ -1,0 +1,58 @@
+#Add the following to the end of template.yaml resources section
+  
+  albResultsApiKey:
+    DependsOn: albResultsAPI
+    Type: AWS::ApiGateway::ApiKey
+    Properties:
+      Enabled: true
+      StageKeys:
+        - RestApiId: !Ref albResultsAPI
+          StageName: Prod
+  albResultsUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    Properties:
+      ApiStages:
+        - ApiId: !Ref albResultsAPI
+          Stage: Prod
+      Description: Usage plan for ALB Results API
+      UsagePlanName: ALBResultsUsagePlan
+  albResultsUsagePlanKey:
+    DependsOn: albResultsUsagePlan
+    Type: AWS::ApiGateway::UsagePlanKey
+    Properties:
+      KeyId: !Ref albResultsApiKey
+      KeyType: API_KEY
+      UsagePlanId: !Ref albResultsUsagePlan   
+
+#Add Auth to   albResultsAPI
+            Auth:
+              ApiKeyRequired: true
+
+
+#Add the  the OPTIONS reource in RetrieveQueryResults Events, and change the ApiKeyRequired to true for the GetEvent:
+
+      GetEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref albResultsAPI
+            Path: /retrieve
+            Method: get
+            Auth:  #Add this to the GetEvent
+              ApiKeyRequired: true
+      OptionsEvent: 
+          Type: Api
+          Properties:
+            RestApiId: !Ref albResultsAPI
+            Path: /retrieve
+            Method: options
+            Auth:
+              ApiKeyRequired: false
+
+
+#Add the following to the output section
+  albResultsAPIKey:
+    Description: "API Key for ALB Results API"
+    Value: !Ref albResultsApiKey
+  albResultsUsagePlan:
+    Description: "Usage Plan ID for ALB Results API"
+    Value: !Ref albResultsUsagePlan

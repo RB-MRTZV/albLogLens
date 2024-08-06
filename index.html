@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Application Load Balancer Log Analysis</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        header {
+            background-color: #1e1e1e;
+            padding: 10px 0;
+        }
+        h1, h2 {
+            color: #4CAF50;
+            text-align: center;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        th, td {
+            border: 1px solid #4CAF50;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #1e5621;
+        }
+        nav ul {
+            list-style-type: none;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        nav ul li {
+            margin: 0 10px;
+        }
+        nav ul li a {
+            color: #ffffff;
+            text-decoration: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        nav ul li a:hover {
+            background-color: #4CAF50;
+        }
+    </style>
+</head>
+<body>
+
+    <h1> ALB  Log Analysis - Past 7 Days</h1>
+
+    <h2>Client IP</h2>
+    <table id="clientIpTable">
+        <tr>
+            <th>Client IP</th>
+            <th>Request Count</th>
+        </tr>
+    </table>
+
+    <h2>Most Requested URLs</h2>
+    <table id="mostRequestedTable">
+        <tr>
+            <th>Request URL</th>
+            <th>Request Count</th>
+        </tr>
+    </table>
+
+    <h2>HTTP Status Codes Status Code Distribution</h2>
+    <table id="statusCodeTable">
+        <tr>
+            <th>Status Code</th>
+            <th>Request Count</th>
+        </tr>
+    </table>
+
+    <h2>Target Average Response Time</h2>
+    <table id="targetResponseTimeTable">
+        <tr>
+            <th>Target Group ARN</th>
+            <th>Max Response Time</th>
+            <th>Avg Response Time</th>
+        </tr>
+    </table>
+
+    <h2>HTTP Method Distribution</h2>
+    <table id="httpDistributionTable">
+        <tr>
+            <th>Request Verb</th>
+            <th>Method Count</th>
+        </tr>
+    </table>
+
+    <h2>User Agents</h2>
+    <table id="userAgentTable">
+        <tr>
+            <th>User Agent</th>
+            <th>Request Count</th>
+        </tr>
+    </table>
+
+    <h2>SSL Usage</h2>
+    <table id="sslUsageTable">
+        <tr>
+            <th>SSL Protocol</th>
+            <th>Usage Count</th>
+        </tr>
+    </table>
+
+    <h2>High Latency Requests</h2>
+    <table id="highLatencyTable">
+        <tr>
+            <th>Request URL</th>
+            <th>Client IP</th>
+            <th>Target Processing Time</th>
+        </tr>
+    </table>
+
+    <h2>Most 4xx IPs</h2>
+    <table id="most4xxIpsTable">
+        <tr>
+            <th>Client IP</th>
+            <th>Error Count</th>
+        </tr>
+    </table>
+    <script>
+	const apiUrl = 'YOUR API ENDPOINT'; //Replace with your api endpoint
+        const apiKey = 'YOUR API KEY'; // Replace with your  API key
+        const queries = ['client_ip', 'most_requested', 'status_code', 'target_average_responsetime', 'http_distribution', 'user_agent', 'ssl_usage', 'high_latency', 'most_4xx_ips'];
+        function fetchData(queryName) {
+            return fetch(`${apiUrl}?query_name=${queryName}&date_range=current`, {
+                method: 'GET',
+                headers: {
+                    'x-api-key': apiKey,
+                    'Content-Type': 'application/json'
+
+                },
+                 mode: 'cors'
+            })
+            .then(response => {
+                if (!response.ok) {
+                    if (response.status === 403) {
+                        throw new Error('API Key is invalid or missing');
+                    }
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => data[0].results)
+            .catch(error => {
+                console.error('Error fetching data:', error);
+                throw error;
+            });
+        }
+
+        function populateTable(tableId, data, keyNames) {
+            const table = document.getElementById(tableId);
+            data.forEach(item => {
+                const row = table.insertRow();
+                keyNames.forEach(key => {
+                    const cell = row.insertCell();
+                    cell.textContent = item[key];
+                });
+            });
+        }
+
+        async function loadData() {
+            try {
+                const clientIpData = await fetchData('client_ip');
+                populateTable('clientIpTable', clientIpData, ['client_ip', 'RequestCount']);
+
+                const mostRequestedData = await fetchData('most_requested');
+                populateTable('mostRequestedTable', mostRequestedData, ['request_url', 'RequestCount']);
+
+                const statusCodeData = await fetchData('status_code');
+                populateTable('statusCodeTable', statusCodeData, ['elb_status_code', 'RequestCount']);
+
+                const targetResponseTimeData = await fetchData('target_average_responsetime');
+                populateTable('targetResponseTimeTable', targetResponseTimeData, ['target_group_arn', 'max_response_time', 'avg_response_time']);
+
+                const httpDistributionData = await fetchData('http_distribution');
+                populateTable('httpDistributionTable', httpDistributionData, ['request_verb', 'method_count']);
+
+                const userAgentData = await fetchData('user_agent');
+                populateTable('userAgentTable', userAgentData, ['user_agent', 'request_count']);
+
+                const sslUsageData = await fetchData('ssl_usage');
+                populateTable('sslUsageTable', sslUsageData, ['ssl_protocol', 'usage_count']);
+
+                const highLatencyData = await fetchData('high_latency');
+                populateTable('highLatencyTable', highLatencyData, ['request_url', 'client_ip', 'target_processing_time']);
+
+                const most4xxIpsData = await fetchData('most_4xx_ips');
+                populateTable('most4xxIpsTable', most4xxIpsData, ['client_ip', 'error_count']);
+
+            } catch (error) {
+                console.error('Error fetching data:', error);
+            }
+        }
+
+        loadData();
+    </script>
+</body>
+</html>
